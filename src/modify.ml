@@ -1,5 +1,5 @@
 (*
- * Copyright (c) 2010-2013,
+ * Copyright (c) 2010-2014,
  *  Jinseong Jeon <jsjeon@cs.umd.edu>
  *  Kris Micinski <micinski@cs.umd.edu>
  *  Jeff Foster   <jfoster@cs.umd.edu>
@@ -435,12 +435,14 @@ let get_last_cursor (dx: D.dex) (citm: D.code_item) : cursor =
   let pdom = St.time "pdom"  Cf.pdoms cfg in
   let inss = St.time "pdom" (Cf.get_last_inss cfg) pdom in
   (* TODO: actually, this func should return cursor list *)
-  let find_return ins =
+  let find_return_or_throw ins =
     let op, _ = D.get_ins dx ins in
-    let hx = I.op_to_hx op in 0x0e <= hx && hx <= 0x11
+    let hx = I.op_to_hx op in
+    op = I.OP_THROW || (0x0e <= hx && hx <= 0x11) (* OP_RETURN_* *)
   in
   let ins =
-    if 1 = (L.length inss) then L.hd inss else L.find find_return inss
+    if 1 = L.length inss then L.hd inss
+    else L.find find_return_or_throw inss
   in
   get_cursor citm ins
 
@@ -624,6 +626,7 @@ let implements (dx: D.dex) (cid: D.link) (itf: D.link) (mname: string) : bool =
   let mid = mtd_body_exists dx cid mname in
   if mid <> D.no_idx then true else
   ( (* absence of the target method *)
+    (* TODO: use shorty to specify the method in case of overloading *)
     let _, mit = D.get_the_mtd dx itf mname in
     let rety = get_ty_str dx (D.get_rety dx mit)
     and argv = L.map (get_ty_str dx) (D.get_argv dx mit) in
@@ -636,6 +639,7 @@ let override (dx: D.dex) (cid: D.link) (mname: string) : bool =
   let mid = mtd_body_exists dx cid mname in
   if mid <> D.no_idx then true else
   ( (* absence of the target method *)
+    (* TODO: use shorty to specify the method in case of overloading *)
     let _, mit = D.get_the_mtd dx cid mname in
     (* TODO: even superclass may not have the method *)
     let rety = get_ty_str dx (D.get_rety dx mit)
@@ -868,9 +872,7 @@ let subst_cls_helper (dx: D.dex) (crs: class_replacement_option list) =
     if xid <> D.no_idx then
     (
       let x_flds = D.get_flds dx xid
-      and y_flds = D.get_fldS dx yid
       and x_mtds = D.get_mtds dx xid
-      and y_mtds = D.get_mtdS dx yid
       in
       if is_snd then
       (
@@ -882,6 +884,9 @@ let subst_cls_helper (dx: D.dex) (crs: class_replacement_option list) =
       );
       if yid <> D.no_idx then
       (
+        let y_flds = D.get_fldS dx yid
+        and y_mtds = D.get_mtdS dx yid
+        in
         if not is_snd then
         (
           make_cmap maps xid yid;
@@ -1088,7 +1093,6 @@ class insrt_tracer_call (dx: D.dex) (mid: D.link) res_cls =
 object
   inherit V.iterator dx
 
-  val mutable skip_cls = false
   method v_cdef (cdef: D.class_def_item) : unit =
     let cid = cdef.D.c_class_id in
     let cname = D.get_ty_str dx cid in
@@ -1097,12 +1101,10 @@ object
     skip_cls <- skip_cls || cid = tr_cid
 
   method v_citm (citm: D.code_item) : unit =
-    if not skip_cls then
-    (
-      let inss = [I.new_invoke call_stt [D.of_idx mid]] in
-      let _ = insrt_insns_before_start dx citm inss in
-      incr trc_cnt
-    )
+    let inss = [I.new_invoke call_stt [D.of_idx mid]] in
+    let _ = insrt_insns_before_start dx citm inss in
+    incr trc_cnt
+
 end
 
 (* call_trace : D.dex -> string list -> unit *)

@@ -1,5 +1,5 @@
 (*
- * Copyright (c) 2010-2013,
+ * Copyright (c) 2010-2014,
  *  Jinseong Jeon <jsjeon@cs.umd.edu>
  *  Kris Micinski <micinski@cs.umd.edu>
  *  Jeff Foster   <jfoster@cs.umd.edu>
@@ -42,11 +42,30 @@
 (** Call Graph *)
 type cg
 
+(** into the {!cg}, add an edge from the caller to the callee
+ returns [true] if a new node is introduced *)
+val add_call : Dex.dex -> cg -> Dex.link -> Dex.link -> bool
+
+(** conduct ({!Propagation}-based) [Intent] resolution analysis *)
+val intent_analysis : bool ref
+
 (** make call graph for overall {!Dex.dex} file *)
 val make_cg : Dex.dex -> cg
 
+(** partial call graph starting from the given classes, with a certain depth *)
+val make_partial_cg : Dex.dex -> int -> Dex.link list -> cg
+
+(** Call Chain in a reversed order *)
+type cc = Dex.link list
+
+(** call chain comparison *)
+val compare_cc : cc -> cc -> int
+
 (** find callers for the given method, with a certain depth *)
-val callers : Dex.dex -> int -> cg -> Dex.link -> Dex.link list
+val callers : Dex.dex -> int -> cg -> Dex.link -> cc list
+
+(** [true] if the given method is invoked by other methods *)
+val has_caller : Dex.dex -> cg -> Dex.link -> bool
 
 (** find dependent classes for the given class *)
 val dependants : Dex.dex -> cg -> Dex.link -> Dex.link list

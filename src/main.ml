@@ -1,5 +1,5 @@
 (*
- * Copyright (c) 2010-2013,
+ * Copyright (c) 2010-2014,
  *  Jinseong Jeon <jsjeon@cs.umd.edu>
  *  Kris Micinski <micinski@cs.umd.edu>
  *  Jeff Foster   <jfoster@cs.umd.edu>
@@ -45,6 +45,8 @@ module Ad = Android
 module D  = Dex
 module P  = Parse
 
+module V = Visitor
+
 module Up  = Unparse
 module Hup = Htmlunparse
 
@@ -57,6 +59,7 @@ module Rc = Reaching
 
 module Md  = Modify
 module Lgg = Logging
+module Dre = Directed
 
 module Cm  = Combine
 module Dp  = Dump
@@ -106,6 +109,10 @@ let dump_method (tx: D.dex) : unit =
   let citm = get_citm tx in
   St.time "dump_method" Up.print_method tx citm
 
+let intent (tx: D.dex) : unit =
+  Cg.intent_analysis := true;
+  ignore (St.time "callgraph" Cg.make_cg tx)
+
 let cg (tx: D.dex) : unit =
   let g = St.time "callgraph" Cg.make_cg tx in
   St.time "callgraph" (Cg.cg2dot tx) g
@@ -131,6 +138,8 @@ let pdom (tx: D.dex) : unit =
 (***********************************************************************)
 (* Analyses                                                            *)
 (***********************************************************************)
+
+let pkg = ref ""
 
 let dependants (tx: D.dex) : unit =
   let g = St.time "callgraph" Cg.make_cg tx in
@@ -167,11 +176,16 @@ and do_reach (tag: string) (tx: D.dex) (citm: D.code_item) : unit =
   in
   St.time tag DFA.fixed_pt ()
 
+let dolistener (tx: D.dex) : unit =
+  St.time "listener" (Dre.find_listener tx) !pkg
+
 let dat = ref "data"
 
 (***********************************************************************)
-(* Logging                                                             *)
+(* Rewrite                                                             *)
 (***********************************************************************)
+
+let act = ref "activity.txt"
 
 let instrument_logging (tx: D.dex) : unit =
   let rnm = !dat^"/rename" in
@@ -197,6 +211,20 @@ try (
 )
 with End_of_file -> prerr_endline "EOF"
 
+let rewrite_directed (tx: D.dex) : unit =
+  let apis = !dat^"/directed.txt" in
+try (
+  let ch = open_in !act in
+  let acts = U.read_lines ch in
+  close_in ch;
+  St.time "directed" (Dre.directed_explore tx !pkg apis) acts;
+(*
+  St.time "dump" (Dp.dump !dex) tx
+*)
+)
+with End_of_file -> prerr_endline "EOF"
+| D.Wrong_dex msg -> prerr_endline msg
+
 (***********************************************************************)
 (* Arguments                                                           *)
 (***********************************************************************)
@@ -216,6 +244,7 @@ let do_htmlunparse   () = task := Some dump_html
 let do_combine       () = task := Some combine
 
 let do_dumpmethod    () = task := Some dump_method
+let do_intent        () = task := Some intent
 let do_cg            () = task := Some cg
 let do_cfg           () = task := Some cfg
 let do_dom           () = task := Some dom
@@ -225,8 +254,10 @@ let do_dependants    () = task := Some dependants
 let do_live          () = task := Some (do_dfa "live")
 let do_const         () = task := Some (do_dfa "const")
 let do_reach         () = task := Some (do_dfa "reach")
+let do_listener      () = task := Some dolistener
 
 let do_logging       () = task := Some instrument_logging
+let do_directed      () = task := Some rewrite_directed
 
 let arg_specs = A.align
   [
@@ -235,7 +266,9 @@ let arg_specs = A.align
     ("-unparse", A.Unit do_unparse, " print dex in yaml format");
     ("-info",    A.Unit do_info,    " print info about dex file");
     ("-classes", A.Unit do_classes, " print class names in dex file");
-    ("-api",     A.Unit do_api,     " print API usage in dex file");
+
+    ("-api", A.Unit do_api,       " print API usage in dex file");
+    ("-sdk", A.Set_string Ad.sdk, " SDK of interest (default: "^(!Ad.sdk)^")");
 
     ("-out",   A.Set_string dex, " output file name (default: "^(!dex)^")");
     ("-dump",  A.Unit do_dump,   " dump dex binary");
@@ -252,8 +285,10 @@ let arg_specs = A.align
     ("-mtd",  A.Set_string mtd, " target method name");
     ("-dump_method", A.Unit do_dumpmethod, 
      " dump instructions for a specified method");
-    ("-cg",   A.Unit do_cg,     " call graph in dot format");
-    ("-cfg",  A.Unit do_cfg,    " control-flow graph in dot format");
+
+    ("-intent", A.Unit do_intent, " Intent resolution analysis");
+    ("-cg",     A.Unit do_cg,     " call graph in dot format");
+    ("-cfg",    A.Unit do_cfg,    " control-flow graph in dot format");
 
     ("-dom",  A.Unit do_dom,    " dominator tree in dot format");
     ("-pdom", A.Unit do_pdom,   " post dominator tree in dot format");
@@ -262,9 +297,29 @@ let arg_specs = A.align
     ("-live",       A.Unit do_live,       " liveness analysis");
     ("-const",      A.Unit do_const,      " constant propagation");
     ("-reach",      A.Unit do_reach,      " reaching definition");
+    ("-listener",   A.Unit do_listener,   " find listener relations");
 
-    ("-logging", A.Unit do_logging,
+    ("-logging",  A.Unit do_logging,
      " instrument logging feature into the given dex");
+    ("-logging-detail", A.Set Lgg.detail,
+     " logging more methods (default: false)");
+
+    ("-directed", A.Unit do_directed,
+     " instrument the dex such that it is directed to certain call sites");
+    ("-cg_depth", A.Set_int Dre.cg_depth,
+     " a level of call graph (default: "^(string_of_int !Dre.cg_depth)^")");
+    ("-cc_len",   A.Set_int Dre.cc_len,
+     " a length of call chains (default: "^(string_of_int !Dre.cc_len)^")");
+    ("-path_len", A.Set_int Dre.path_len,
+     " a length of paths (default: "^(string_of_int !Dre.path_len)^")");
+
+    ("-dat", A.Set_string dat,
+     " folder containing various text inputs (default: "^(!dat)^")");
+    ("-act", A.Set_string act,
+     " file containing activity names (default: "^(!act)^")");
+    ("-pkg", A.Set_string pkg,
+     " specify the package name of the app");
+
   ]
 
 (***********************************************************************)
@@ -282,29 +337,35 @@ let main () =
       let chan = open_in_bin !infile in
       chan,  fun () -> close_in chan
   in
-  if (!infile <> "-") then
-  (
-    let f_sz = 100 * in_channel_length ch
-    and ctrl = Gc.get () in
-    ctrl.Gc.minor_heap_size <- max f_sz ctrl.Gc.minor_heap_size;
-    Gc.set ctrl
-  );
   try (
+    Printexc.record_backtrace true;
     match !task with
     | Some f ->
     (
-      St.reset St.HardwareIfAvail;
+      St.reset St.SoftwareTimer;
       if f == dump_hello then f (D.empty_dex ()) else
       (
         let dex = St.time "parse" P.parse ch in
         k ();
+        (
+          try
+            let ch2 = open_in (!dat^"/skip.txt") in
+            let res = U.read_lines ch2 in
+            close_in ch2;
+            V.set_skip_pkgs res
+          with Sys_error _ -> ()
+        );
         f dex
       );
       St.print stderr "====== redexer performance statistics ======\n"
     )
     | _ -> A.usage arg_specs usage
   )
-  with End_of_file -> prerr_endline "EOF"
+  with
+  | End_of_file -> prerr_endline "EOF"
+  | e ->
+    prerr_endline ("Exception: "^(Printexc.to_string e));
+    Printexc.print_backtrace stderr
 ;;
 
 main ();;

@@ -1,6 +1,6 @@
 #! /usr/bin/env ruby
 
-## Copyright (c) 2010-2013,
+## Copyright (c) 2010-2014,
 ##  Jinseong Jeon <jsjeon@cs.umd.edu>
 ##  Kris Micinski <micinski@cs.umd.edu>
 ##  Jeff Foster   <jfoster@cs.umd.edu>
@@ -34,39 +34,45 @@
 
 require 'rubygems'
 require 'optparse'
-require 'pathname'
 require 'pp'
 
-THIS_FILE = Pathname.new(__FILE__).realpath.to_s
+THIS_FILE = File.expand_path(__FILE__)
 HERE = File.dirname(THIS_FILE)
-HOME = HERE + "/.."
-RES = HOME + "/results/"
+HOME = File.join(HERE, "..")
+RES = File.join(HOME, "results")
 tmp_dir = "tmp_dir_" + rand(36**8).to_s(36) # random string with size 8
 
-require "#{HERE}/apk"
+require "#{File.join(HERE, "apk")}"
 
 cmds = [
   "unparse", "htmlunparse", "id", "combine",
   "info", "classes", "api", "opstat",
-  "cg", "cfg", "dom", "pdom",
+  "intent", "cg", "cfg", "dom", "pdom",
   "dump_method", "dependants", "live", "const", "reach",
-  "sdk", "launcher", "hello", "logging"
+  "exported", "permissions", "sdk", "launcher",
+  "activity", "service", "provider", "receiver",
+  "custom_views", "fragments", "buttons",
+  "hello", "logging", "directed"
 ]
 
 cmd = ""
 op = nil
+sdk = nil
 mtd = nil
 lib = nil
 to = nil
 outputdir = nil
 
 option_parser = OptionParser.new do |opts|
-  opts.banner = "Usage: ruby #{THIS_FILE} target.(apk|dex) [options]"
+  opts.banner = "Usage: ruby #{__FILE__} target.(apk|dex) [options]"
   opts.on("--cmd command", cmds, cmds.join(", ")) do |c|
     cmd = c
   end
   opts.on("--op opcodes", Array, "opcode statistics") do |l|
     op = l
+  end
+  opts.on("--sdk com.name", "SDK name of interest") do |s|
+    sdk = s
   end
   opts.on("--mtd class.method", "target method for CG, CFG, etc.") do |m|
     mtd = m
@@ -80,6 +86,12 @@ option_parser = OptionParser.new do |opts|
   opts.on("--to blah.(yml|pdf|apk|dex)", "result file name") do |t|
     to = t
   end
+  opts.on("--no-pdf", "do not convert dot output to pdf") do
+    Dex.pdf = false
+  end
+  opts.on("--opt-dex options", "options for redexer binary") do |o|
+    Dex.opt = o
+  end
   opts.on_tail("-h", "--help", "show this message") do
     puts opts
     exit
@@ -87,13 +99,14 @@ option_parser = OptionParser.new do |opts|
 end.parse!
  
 if not (cmd == "hello") and ARGV.length < 1
-  puts "Usage: ruby #{THIS_FILE} target.(apk|dex) [options]"
-  exit
+  raise "target file is missed"
 end
 
 if not cmds.include?(cmd)
   raise "wrong command"
 end
+
+fn = ARGV[0]
 
 def close(apk)
   apk.clean if apk
@@ -101,11 +114,11 @@ end
 
 apk = nil
 dex = nil
-case File.extname(ARGV[0])
+case File.extname(fn)
 when ".dex"
-  dex = ARGV[0]
+  dex = fn
 when ".apk"
-  apk = Apk.new(ARGV[0], tmp_dir)
+  apk = Apk.new(fn, tmp_dir)
   if apk.unpack
     dex = apk.dex
   else
@@ -149,7 +162,7 @@ when "id"
     Dex.dump(dex, to)
   else
     Dex.dump(dex)
-    system("mv -f #{HOME}/classes.dex #{RES}") if dex.succ
+    system("mv -f classes.dex #{RES}") if dex.succ
   end
 when "combine"
   raise "no lib dex provided" unless lib
@@ -157,10 +170,14 @@ when "combine"
     Dex.combine(dex, lib, to)
   else
     Dex.combine(dex, lib)
-    system("mv -f #{HOME}/classes.dex #{RES}") if dex.succ
+    system("mv -f classes.dex #{RES}") if dex.succ
   end
 when "info", "classes", "api"
-  Dex.send(cmd.to_sym, dex)
+  if cmd == "api" and sdk
+    Dex.send(cmd.to_sym, dex, sdk)
+  else
+    Dex.send(cmd.to_sym, dex)
+  end
   puts Dex.out if dex_succ?(apk, cmd)
 when "opstat"
   if op
@@ -169,14 +186,18 @@ when "opstat"
     Dex.opstat(dex)
   end
   puts Dex.out if dex_succ?(apk, cmd)
+when "intent"
+  Dex.intent(dex)
+  puts Dex.out if dex_succ?(apk,cmd)
 when "cg"
-  if to
-    pdf = to
-  else
-    pdf = cmd + ".pdf"
-  end
+  pdf = cmd + ".pdf"
+  pdf = to if to
   Dex.callgraph(dex, pdf)
-  system("mv -f #{HOME}/#{pdf} #{RES}") unless to
+  if Dex.pdf
+    system("mv -f #{pdf} #{RES}") unless to
+  else
+    puts Dex.out if dex_succ?(apk, cmd)
+  end
 when "cfg", "dom", "pdom"
   if not mtd
     close(apk)
@@ -185,13 +206,14 @@ when "cfg", "dom", "pdom"
   part = mtd.split('.')
   cls = part[0..-2].join('.')
   mtd = part[-1]
-  if to
-    pdf = to
-  else
-    pdf = cmd + ".pdf"
-  end
+  pdf = cmd + ".pdf"
+  pdf = to if to
   Dex.send(cmd.to_sym, dex, cls, mtd, pdf)
-  system("mv -f #{HOME}/#{pdf} #{RES}") unless to
+  if Dex.pdf
+    system("mv -f #{pdf} #{RES}") unless to
+  else
+    puts Dex.out if dex_succ?(apk, cmd)
+  end
 when "dump_method", "dependants", "live", "const", "reach"
   if not mtd
     close(apk)
@@ -202,14 +224,33 @@ when "dump_method", "dependants", "live", "const", "reach"
   mtd = part[-1]
   Dex.send(cmd.to_sym, dex, cls, mtd)
   puts Dex.out if dex_succ?(apk, cmd)
-when "permissions", "sdk", "launcher"
+when "exported", "permissions", "sdk", "launcher"
   apk? apk
   res = apk.send(cmd.to_sym)
   if res != []
-    puts ARGV[0]
+    puts fn
     puts res
   end
-when "logging"
+when "activity", "service", "provider", "receiver"
+  apk? apk
+  protected_comps, unprotected = apk.find_comps(cmd)
+  if not protected_comps.empty?
+    puts "Protected:"
+    pp protected_comps
+  end
+  if not unprotected.empty?
+    puts "Unprotected:"
+    puts unprotected
+  end
+when "custom_views", "fragments", "buttons"
+  apk? apk
+  res = apk.send(cmd.to_sym)
+  if res != {}
+    puts fn
+    require 'pp'
+    PP.pp res
+  end
+when "logging", "directed"
   apk.send(cmd.to_sym)
   if not apk.succ
     puts apk.out
@@ -227,17 +268,17 @@ when "logging"
     raise "repacking apk failed"
   end
   # for debugging, leave rewritten dex and xml files
-  system("cp -f #{tmp_dir}/classes.dex #{RES}")
-  system("cp -f #{tmp_dir}/AndroidManifest.xml #{RES}")
+  system("cp -f #{File.join(tmp_dir, "classes.dex")} #{RES}")
+  system("cp -f #{File.join(tmp_dir, "AndroidManifest.xml")} #{RES}")
   # and move the rewritten apk
   if not to
-    rewritten = File.basename(ARGV[0])
+    rewritten = File.basename(fn)
     system("mv -f #{rewritten} #{RES}") if apk.succ
   end
   puts apk.out if apk.succ
 when "hello"
   Dex.hello
-  system("mv -f #{HOME}/classes.dex #{RES}") if dex_succ?(apk, cmd)
+  system("mv -f classes.dex #{RES}") if dex_succ?(apk, cmd)
 end
 
 close(apk)

@@ -1,5 +1,5 @@
 (*
- * Copyright (c) 2010-2013,
+ * Copyright (c) 2010-2014,
  *  Jinseong Jeon <jsjeon@cs.umd.edu>
  *  Kris Micinski <micinski@cs.umd.edu>
  *  Jeff Foster   <jfoster@cs.umd.edu>
@@ -51,6 +51,7 @@ module AA = Android.App
 module AC = Android.Content
 module AD = Android.Database
 module AN = Android.Net
+module AV = Android.View
 
 module Cf = Ctrlflow
 module Df = Dataflow
@@ -70,7 +71,9 @@ module RE = Str
 type value =
   |  Const of int64           (* numerical constant *)
   | String of string          (* const-string *)
-  | Object of string          (* const-class *)
+  |  Clazz of string          (* const-class *)
+  | Object of string          (* instance *)
+  | Intent of string          (* Intent for a specific component *)
   |  Field of string * string (* static fields *)
   | BOT                       (* non-const *)
   | TOP                       (* undefined *)
@@ -79,8 +82,10 @@ let meet_val v1 v2 = match v1, v2 with
   | BOT, _ | _, BOT -> BOT
   | TOP, _ -> v2 | _, TOP -> v1
   |  Const c1,  Const c2 when 0 = I64.compare c1 c2 -> v1
-  | String s1, String s2 when 0 =   S.compare s1 s2 -> v1
-  | Object o1, Object o2 when 0 =   S.compare o1 o2 -> v1
+  | String s1, String s2 when 0 = S.compare s1 s2 -> v1
+  |  Clazz o1,  Clazz o2 when 0 = S.compare o1 o2 -> v1
+  | Object o1, Object o2 when 0 = S.compare o1 o2 -> v1
+  | Intent i1, Intent i2 when 0 = S.compare i1 i2 -> v1
   | Field (o1, f1), Field (o2, f2)
     when 0 = S.compare o1 o2 && 0 = S.compare f1 f2 -> v1
   | _, _ -> BOT
@@ -91,7 +96,9 @@ let compare_val v1 v2 = match v1, v2 with
   | _, TOP -> -1 | TOP, _ -> 1
   |  Const c1,  Const c2 -> I64.compare c1 c2
   | String s1, String s2 ->   S.compare s1 s2
+  |  Clazz o1,  Clazz o2 ->   S.compare o1 o2
   | Object o1, Object o2 ->   S.compare o1 o2
+  | Intent i1, Intent i2 ->   S.compare i1 i2
   | Field (o1, f1), Field (o2, f2) ->
     let c = S.compare o1 o2 in if c <> 0 then c else S.compare f1 f2
   | _, _ -> 1 (* not total order; just return either 1 or -1 *)
@@ -99,10 +106,21 @@ let compare_val v1 v2 = match v1, v2 with
 let val_to_str = function
   |  Const c -> I64.to_string c
   | String s -> "\""^s^"\""
-  | Object o -> o
+  |  Clazz o -> o
+  | Object o -> "Obj("^o^")"
+  | Intent i -> "Intent("^i^")"
   | Field (o, f) -> "\""^o^"."^f^"\""
   | BOT -> "non-const"
   | TOP -> "undefined"
+
+let map_to_str l =
+  let buf = B.create (IM.cardinal l) in
+  let per_kv k v =
+    B.add_string buf ("v"^(string_of_int k)^": ");
+    B.add_string buf ((val_to_str v)^"\n")
+  in
+  IM.iter per_kv l;
+  B.contents buf
 
 let all (n: int) v : value IM.t =
   L.fold_left (fun acc i -> IM.add i v acc) IM.empty (U.range (-1) (n - 1) [])
@@ -137,6 +155,17 @@ let rec transfer (dx: D.dex) (inn: value IM.t) (ins: D.link) : value IM.t =
     let d = I.of_reg dst in
     IM.add d (read_const dx op src) inn
   )
+  else if 0x1f = hx then (* CHECK-CAST *)
+  (
+    let dst::id::[] = opr in
+    let d = I.of_reg dst
+    and cid = D.opr2idx id in
+    match IM.find d inn with
+    | Object _ ->
+	  let cname = D.get_ty_str dx cid in
+      IM.add d (Object cname) inn
+    | _ -> IM.add d BOT inn
+  )
   else if 0x22 = hx then (* NEW *)
   (
     let dst::id::[] = opr in
@@ -151,7 +180,11 @@ let rec transfer (dx: D.dex) (inn: value IM.t) (ins: D.link) : value IM.t =
     then
       IM.add d (String "") inn
     else
-      IM.add d BOT inn
+    (* android.content.Intent *)
+    if 0 = S.compare cname (J.to_java_ty AC.intent) then
+      IM.add d (Intent "") inn
+    else
+      IM.add d (Object cname) inn
   )
   else if L.mem hx (U.range 0x32 0x3d [0x2b; 0x2c]) then (* SWITCH/IF(z) *)
     inn
@@ -248,6 +281,37 @@ let rec transfer (dx: D.dex) (inn: value IM.t) (ins: D.link) : value IM.t =
         IM.add (-1) xy inn
       )
       (* TODO: String.format *)
+      (* Thread.<init>(Runnable) *)
+      | Object o when 0 = S.compare mname J.init && 3 = L.length opr
+        && 0 = S.compare o (J.to_java_ty J.Lang.thd) ->
+      (
+        let reg_y = get_1st opr in
+        let y =
+          match IM.find reg_y inn with
+          | Object o' -> Object o'
+          | _ -> this
+        in
+        IM.add reg_x y inn
+      )
+      (* Intent.(<init> | setClass)(..., Class | Uri) *)
+      | Intent _
+      when (0 = S.compare mname J.init && 4 = L.length opr)
+        || 0 = S.compare mname AC.set_class ->
+      (
+        let reg_z = get_nth 2 opr in
+        let z =
+          match IM.find reg_z inn with
+          | String s | Clazz s -> Intent s
+          | _ -> this
+        in
+        IM.add (-1) z (IM.add reg_x z inn)
+      )
+      (* findViewById(I) *)
+      | _ when 0 = S.compare mname AA.find_view ->
+      (
+        let view = J.to_java_ty AV.view in
+        IM.add (-1) (Object view) inn
+      )
     with Match_failure _ ->
       let rtid = D.get_rety dx (D.get_mit dx mid) in
       let rety = J.of_java_ty (D.get_ty_str dx rtid) in
@@ -272,8 +336,11 @@ and read_const (dx: D.dex) (op: I.opcode) (opr: I.operand) : value =
   | I.OP_CONST_STRING, I.OPR_INDEX sid ->
     String (D.get_str dx (D.to_idx sid))
   | I.OP_CONST_CLASS,  I.OPR_INDEX cid ->
-    Object (J.of_java_ty (D.get_ty_str dx (D.to_idx cid)))
-  (* TODO: should distinguish *_FROM_HIGH16 *)
+    Clazz (D.get_ty_str dx (D.to_idx cid))
+  | I.OP_CONST_HIGH16, I.OPR_CONST c ->
+    Const (I64.shift_left c (32 - 16))
+  | I.OP_CONST_WIDE_HIGH16, I.OPR_CONST c ->
+    Const (I64.shift_left c (64 - 16))
   | _, I.OPR_CONST c -> Const c
   | _, _ -> BOT
 
@@ -304,14 +371,8 @@ let make_dfa (dx: D.dex) (citm: D.code_item) : propagation =
     let compare l1 l2 =
       IM.compare compare_val l1 l2
 
-    let to_s l =
-      let buf = B.create (IM.cardinal l) in
-      let per_kv k v =
-        B.add_string buf ("v"^(string_of_int k)^": ");
-        B.add_string buf ((val_to_str v)^"\n")
-      in
-      IM.iter per_kv l;
-      B.contents buf
+    let to_s = map_to_str
+
   end
   in
   let module PFlow : Df.DATAFLOW with type l = RegVal.l and type st = CF.st =

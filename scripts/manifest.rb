@@ -1,4 +1,4 @@
-## Copyright (c) 2010-2013,
+## Copyright (c) 2010-2014,
 ##  Jinseong Jeon <jsjeon@cs.umd.edu>
 ##  Kris Micinski <micinski@cs.umd.edu>
 ##  Jeff Foster   <jfoster@cs.umd.edu>
@@ -38,6 +38,7 @@ class Manifest
 
   ROOT = "/manifest"
   APP  = ROOT + "/application"
+  PRV  = "provider"
   ACT  = "activity"
   ACTV = APP + "/" + ACT
   IFL  = "intent-filter"
@@ -50,6 +51,9 @@ class Manifest
   NAME = "name"
   PKG  = "package"
   ENABLED = "enabled"
+  RW_PERM = "permission"
+  R_PERM = "readPermission"
+  W_PERM = "writePermission"
   ANDNAME = "android:name"
 
   def initialize(file_name)
@@ -57,7 +61,15 @@ class Manifest
     @doc = Nokogiri::XML(f)
     f.close
     @pkg = @doc.xpath(ROOT)[0][PKG]
+    # usually, namespace would be "android",
+    # but some apps, e.g., spotify, use different ones, e.g., "a"
+    href = @doc.xpath(ROOT)[0].namespaces.keys[0]
+    @ns = href.split(':')[-1]
     @out = ""
+  end
+
+  def lookup_name(a)
+    a[NAME] || a[ANDNAME]
   end
 
   def launcher
@@ -67,20 +79,78 @@ class Manifest
 
     actions = @doc.xpath(ACTN)
     actions.each do |action|
-      if action[NAME].split('.')[-1] == "MAIN"
-        main_acts << action.parent.parent[NAME]
-      end
+      begin
+        if lookup_name(action).split('.')[-1] == "MAIN"
+          main_acts << lookup_name(action.parent.parent)
+        end
+      rescue; end;
     end
 
     categories = @doc.xpath(CATG)
     categories.each do |category|
-      if category[NAME].split('.')[-1] == "LAUNCHER"
-        launchers << category.parent.parent[NAME]
-      end
+      begin
+        if lookup_name(category).split('.')[-1] == "LAUNCHER"
+          launchers << lookup_name(category.parent.parent)
+        end
+      rescue; end;
     end
 
     inter = main_acts & launchers
     @out = self.class.class_name(@pkg, inter.to_a[0]) unless inter.empty?
+  end
+
+  def exported
+    @out = ""
+    comps = Set.new
+    # 1) has intent filters
+    i_filters = @doc.xpath("//"+IFL)
+    i_filters.each do |i_filter|
+      comps << self.class.class_name(@pkg, lookup_name(i_filter.parent))
+    end
+    # 2) attribute "exported" is true
+    elts = @doc.xpath("//*[@#{@ns}:exported=\"true\"]")
+    elts.each do |elt|
+      comps << self.class.class_name(@pkg, lookup_name(elt))
+    end
+    # 3) "provider" is exported by default
+    providers = @doc.xpath(APP + "/" + PRV)
+    providers.each do |prv|
+      comps << self.class.class_name(@pkg, lookup_name(prv))
+    end
+    @out = comps.to_a
+  end
+
+  def find_comps(tag)
+    # all components are protected by application's permission by default
+    app = @doc.xpath(APP)[0]
+    apps_perm = app[RW_PERM] if app and app[RW_PERM]
+    protected_comps = Hash.new
+    unprotected_comps = Set.new
+    comps = @doc.xpath(APP + "/" + tag)
+    comps.each do |comp|
+      next if comp[ENABLED] == "false"
+      comp_name = self.class.class_name(@pkg, lookup_name(comp))
+      comp_perm  = comp[RW_PERM]
+      comp_rperm = comp[R_PERM]
+      comp_wperm = comp[W_PERM]
+      if comp_perm
+        protected_comps[comp_name] = comp_perm
+      elsif comp_rperm
+        protected_comps[comp_name] = comp_rperm
+      elsif comp_wperm
+        protected_comps[comp_name] = comp_wperm
+      elsif apps_perm
+        protected_comps[comp_name] = apps_perm
+      else
+        unprotected_comps << comp_name
+      end
+    end
+    @out = [protected_comps, unprotected_comps.to_a]
+  end
+
+  def application
+    app = lookup_name(@doc.xpath(APP)[0])
+    self.class.class_name(@pkg, app) if app
   end
 
   def save_to(file_name)
@@ -90,7 +160,18 @@ class Manifest
     f.close
     @out << "saved to #{file_name}\n"
   end
-  
+
+  PERM = "uses-permission"
+
+  def permissions
+    perms = Array.new
+    permissions = @doc.xpath(ROOT + "/" + PERM)
+    permissions.each do |perm|
+      perms << lookup_name(perm)
+    end
+    @out = perms
+  end
+
   def sdk
     v = 3 # minSdkVersion
     sdks = @doc.xpath(ROOT + "/uses-sdk")

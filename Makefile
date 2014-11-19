@@ -1,14 +1,16 @@
 SOURCES := \
-	ocamlutil/stats_stubs.c ocamlutil/stats.ml ocamlutil/clist.ml \
+	ocamlutil/stats.ml ocamlutil/clist.ml \
 	ocamlutil/uChar.ml ocamlutil/uTF8.ml \
 	ocamlutil/enum.ml ocamlutil/dynArray.ml \
 	src/util.ml src/log.ml src/java.ml src/instr.ml src/dex.ml \
 	src/parse.ml src/visitor.ml src/android.ml \
 	src/ext/unparse.ml src/ext/htmlunparse.ml \
-	src/ext/callgraph.ml src/ext/ctrlflow.ml src/ext/dataflow.ml \
+	src/ext/ctrlflow.ml src/ext/dataflow.ml \
 	src/ext/liveness.ml src/ext/propagation.ml src/ext/reaching.ml \
+	src/ext/callgraph.ml \
 	src/modify.ml src/combine.ml src/dump.ml \
-	src/ext/logging.ml src/main.ml
+	src/ext/logging.ml src/ext/directed.ml \
+	src/main.ml
 
 DOC_FILES := \
 	src/util.mli src/log.mli src/java.mli src/instr.mli src/dex.mli \

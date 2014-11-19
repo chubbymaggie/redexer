@@ -1,4 +1,4 @@
-# Copyright (c) 2010-2013,
+# Copyright (c) 2010-2014,
 ##  Jinseong Jeon <jsjeon@cs.umd.edu>
 ##  Kris Micinski <micinski@cs.umd.edu>
 ##  Jeff Foster   <jfoster@cs.umd.edu>
@@ -31,19 +31,18 @@
 ## POSSIBILITY OF SUCH DAMAGE.
 
 class Dex
-  require 'pathname'
 
-  THIS_FILE = Pathname.new(__FILE__).realpath.to_s
+  THIS_FILE = File.expand_path(__FILE__)
   HERE = File.dirname(THIS_FILE)
-  HOME = HERE + "/.."
-  DAT  = HOME + "/data"
-  REDEXER = HOME + "/redexer"
+  HOME = File.join(HERE, "..")
+  DAT  = File.join(HOME, "data")
+  REDEXER = File.join(HOME, "redexer")
 
   QUIET = "2>/dev/null"
   TOO = "2>&1"
 
-  DEX = HOME + "/classes.dex"
-  
+  DEX = File.join(HOME, "classes.dex")
+
   def self.unparse(dex_name=DEX, *file_name)
     yml = `#{REDEXER} -unparse #{dex_name} #{QUIET}`
     @@succ = $?.exitstatus == 0
@@ -64,8 +63,8 @@ class Dex
     self.runcmd("#{REDEXER} -classes #{dex_name} #{QUIET}")
   end
 
-  def self.api(de_name=DEX)
-    self.runcmd("#{REDEXER} -api #{dex_name} #{QUIET}")
+  def self.api(dex_name=DEX, sdk="android.")
+    self.runcmd("#{REDEXER} -api #{dex_name} -sdk #{sdk} #{QUIET}")
   end
 
   def self.dump(dex_name=DEX, *out_name)
@@ -80,17 +79,24 @@ class Dex
   
   def self.logging(dex_name=DEX, *out_name)
     opt = self.out_opt(out_name)
-    self.runcmd("#{REDEXER} #{opt} #{dex_name} -logging")
+    self.runcmd("#{REDEXER} #{opt} #{dex_name} -logging #{TOO}")
+  end
+
+  def self.directed(dex_name, acts, pkg, *out_name)
+    opt = self.out_opt(out_name)
+    cmd = "#{REDEXER} #{opt} #{dex_name} -act #{acts} -pkg #{pkg}"
+    cmd += " -directed #{TOO}"
+    self.runcmd(cmd)
   end
   
-  CSS = DAT + "/dex-format.css"
+  CSS = File.join(DAT, "dex-format.css")
 
   def self.htmlunparse(dex_name=DEX, dir_name="output")
     if not File.exists?(dir_name)
       puts "Creating new output directory: #{dir_name}"
       system("mkdir #{dir_name}")
       puts "Moving default stylesheet to #{dir_name}"
-      system("cp #{CSS} #{dir_name}/dex-format.css")
+      system("cp #{CSS} #{File.join(dir_name, "dex-format.css")}")
     end
     if !(test ?d, dir_name)
       puts "Error!  ``#{dir_name}'' exists and is not a directory"
@@ -136,28 +142,44 @@ class Dex
     @@out
   end
 
-  def self.toPDF(pdf)
-    "| dot -Tpdf -o #{pdf}"
+  def self.intent(dex_name=DEX)
+    self.runcmd("#{REDEXER} -intent #{dex_name} #{QUIET}")
+  end
+
+  def self.pdf
+    @@pdf
+  end
+
+  def self.pdf= (v)
+    @@pdf = v
+  end
+
+  def self.toPDF(cmd, pdf)
+    if @@pdf
+      `#{cmd} | dot -Tpdf -o #{pdf}`
+    else
+      self.runcmd(cmd)
+    end
   end
 
   def self.callgraph(dex_name=DEX, *pdf_name)
-    pdf = self.pdf(dex_name, pdf_name)
-    `#{REDEXER} -cg #{dex_name} #{self.toPDF(pdf)}`
+    pdf = self.extract_pdf(dex_name, pdf_name)
+    self.toPDF("#{REDEXER} -cg #{dex_name}", pdf)
   end
 
   def self.cfg(dex_name, cls, mtd, *pdf_name)
-    pdf = self.pdf(dex_name, pdf_name)
-    `#{REDEXER} -cls #{cls} -mtd #{mtd} -cfg #{dex_name} #{self.toPDF(pdf)}`
+    pdf = self.extract_pdf(dex_name, pdf_name)
+    self.toPDF("#{REDEXER} -cls #{cls} -mtd #{mtd} -cfg #{dex_name}", pdf)
   end
   
   def self.dom(dex_name, cls, mtd, *pdf_name)
-    pdf = self.pdf(dex_name, pdf_name)
-    `#{REDEXER} -cls #{cls} -mtd #{mtd} -dom #{dex_name} #{self.toPDF(pdf)}`
+    pdf = self.extract_pdf(dex_name, pdf_name)
+    self.toPDF("#{REDEXER} -cls #{cls} -mtd #{mtd} -dom #{dex_name}", pdf)
   end
 
   def self.pdom(dex_name, cls, mtd, *pdf_name)
-    pdf = self.pdf(dex_name, pdf_name)
-    `#{REDEXER} -cls #{cls} -mtd #{mtd} -pdom #{dex_name} #{self.toPDF(pdf)}`
+    pdf = self.extract_pdf(dex_name, pdf_name)
+    self.toPDF("#{REDEXER} -cls #{cls} -mtd #{mtd} -pdom #{dex_name}", pdf)
   end
  
   def self.dump_method(dex_name, cls, mtd)
@@ -182,6 +204,10 @@ class Dex
     self.runcmd("#{REDEXER} -cls #{cls} -mtd #{mtd} -reach #{dex_name}")
   end
 
+  def self.listener(dex_name, pkg)
+    self.runcmd("#{REDEXER} -listener #{dex_name} -pkg #{pkg} #{QUIET}")
+  end
+
   def self.hello
     self.runcmd("#{REDEXER} -hello")
   end
@@ -194,12 +220,19 @@ class Dex
     @@succ
   end
 
+  def self.opt= (v)
+    @@opt = v
+  end
+
 private
 
+  @@opt = ""
+  @@pdf = true
   @@online = true
 
   def self.runcmd(cmd)
     @@out = ""
+    cmd = "#{cmd} #{@@opt}" if @@opt
     @@out << cmd + "\n"
     @@out << `#{cmd}`
     @@succ = $?.exitstatus == 0
@@ -213,11 +246,11 @@ private
     end
   end
 
-  def self.pdf(dex_name, pdf_name)
+  def self.extract_pdf(dex_name, pdf_name)
     if pdf_name.length > 0
       pdf_name[0]
     else
-      base = File.basename(dex_name,".dex")
+      base = File.basename(dex_name, ".dex")
       base + ".pdf"
     end
   end

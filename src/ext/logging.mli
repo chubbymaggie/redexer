@@ -1,5 +1,5 @@
 (*
- * Copyright (c) 2010-2013,
+ * Copyright (c) 2010-2014,
  *  Jinseong Jeon <jsjeon@cs.umd.edu>
  *  Kris Micinski <micinski@cs.umd.edu>
  *  Jeff Foster   <jfoster@cs.umd.edu>
@@ -38,6 +38,12 @@
 
 (** This module provides special functions for logging apps *)
 
-(** instrument logging features into the dex. *)
+(** conclude more logging *)
+val detail : bool ref
+
+(** add non-overriden transition methods *)
+val add_transition : Dex.dex -> unit
+
+(** instrument logging features into the dex accordingly *)
 val modify : Dex.dex -> unit
 

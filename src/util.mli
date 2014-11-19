@@ -1,5 +1,5 @@
 (*
- * Copyright (c) 2010-2013,
+ * Copyright (c) 2010-2014,
  *  Jinseong Jeon <jsjeon@cs.umd.edu>
  *  Kris Micinski <micinski@cs.umd.edu>
  *  Jeff Foster   <jfoster@cs.umd.edu>
@@ -72,8 +72,21 @@ val trim_last : string -> string
 (** split a [string] into a [list] of [char]s *)
 val explode : string -> char list
 
+(** reverse the given [string] *)
+val str_rev : string -> string
+
 (** split a [string] into a [list] of [string]s, with separator [split] *)
 val split_string : string -> char -> string list
 
 (** [true] if the given [string] begins with the given prefix *)
 val begins_with : string -> string -> bool
+
+(** [true] if the given [string] ends with the given suffix *)
+val ends_with : string -> string -> bool
+
+(** [true] if the given [string] contains the other [string] *)
+val contains : string -> string -> bool
+
+(** find the common prefix of the given [string]s *)
+val common_prefix : string -> string -> string
+

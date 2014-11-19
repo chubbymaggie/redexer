@@ -1,5 +1,5 @@
 (*
- * Copyright (c) 2010-2013,
+ * Copyright (c) 2010-2014,
  *  Jinseong Jeon <jsjeon@cs.umd.edu>
  *  Kris Micinski <micinski@cs.umd.edu>
  *  Jeff Foster   <jfoster@cs.umd.edu>
@@ -41,7 +41,9 @@
 type value =
   |  Const of int64           (** numerical constant *)
   | String of string          (** const-string *)
-  | Object of string          (** const-class *)
+  |  Clazz of string          (** const-class *)
+  | Object of string          (** instance *)
+  | Intent of string          (** Intent for a specific component *)
   |  Field of string * string (** static fields *)
   | BOT                       (** non-const *)
   | TOP                       (** undefined *)

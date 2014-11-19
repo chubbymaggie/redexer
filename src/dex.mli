@@ -1,5 +1,5 @@
 (*
- * Copyright (c) 2010-2013,
+ * Copyright (c) 2010-2014,
  *  Jinseong Jeon <jsjeon@cs.umd.edu>
  *  Kris Micinski <micinski@cs.umd.edu>
  *  Jeff Foster   <jfoster@cs.umd.edu>
@@ -338,6 +338,18 @@ val of_idx : link -> int
 (** unwrapping [Off] *)
 val of_off : link -> int
 
+module IdxKey :
+sig
+  type t = link
+  val compare : t -> t -> int
+end
+
+module OffKey :
+sig
+  type t = link
+  val compare : t -> t -> int
+end
+
 (** from [OPR_INDEX] to [Idx] *)
 val opr2idx : Instr.operand -> link
 
@@ -477,6 +489,9 @@ val get_mit : dex -> link -> method_id_item
 (** get {!proto_id_item} for a given method. *)
 val get_pit : dex -> method_id_item -> proto_id_item
 
+(** get type for given field *)
+val get_fty : dex -> field_id_item -> link
+
 (** get a [list] of arguments for given method *)
 val get_argv : dex -> method_id_item -> link list
 
@@ -512,6 +527,15 @@ val get_fld_name : dex -> link -> string
 (** get name for given method *)
 val get_mtd_name : dex -> link -> string
 
+(** get name for given field, along with class name *)
+val get_fld_full_name : dex -> link -> string
+
+(** get name for given method, along with class name *)
+val get_mtd_full_name : dex -> link -> string
+
+(** get method signature, e.g., [Lpkg/cls;->mtd(arg1;arg2;...)rety] *)
+val get_mtd_sig : dex -> link -> string
+
 (** get class id from name, {!no_idx} unless found *)
 val get_cid : dex -> string -> link
 
@@ -519,23 +543,35 @@ val get_cid : dex -> string -> link
  raise [Not_found] unless found *)
 val get_cdef : dex -> link -> class_def_item
 
-(** get superclass id for given class,
+(** get interfaces implemented by the given class *)
+val get_interfaces : dex -> link -> link list
+
+(** get classes that implement the given interface *)
+val get_implementers : dex -> link -> link list
+
+(** get super class id for given class,
  {!no_idx} if it's at the top level *)
 val get_superclass : dex -> link -> link
 
-(** get superclasses for a given class. *)
+(** get super classes for a given class *)
 val get_superclasses : dex -> link -> link list
-
-(** get implemented interfaces of a given class *)
-val get_interfaces : dex -> link -> link list
 
 (** check that some property (given as a function {!link} to [bool])
  holds in hierarchy starting from the given class *)
 val in_hierarchy : dex -> (link -> bool) -> link -> bool
 
-(** check whether some class is a superclass (up through the hierarchy) 
-    of a given class. *)
+(** check whether some class is a super class (up through the hierarchy) 
+    of a given class *)
 val is_superclass : dex -> link -> link -> bool
+
+(** check whether some class is an inner class of the given class *)
+val is_innerclass : dex -> link -> link -> bool
+
+(** get inner classes for the given class *)
+val get_innerclasses : dex -> link -> link list
+
+(** get owning class if the given class is an inner class *)
+val get_owning_class : dex -> link -> link
 
 (** get all fields, along with ids, for given class *)
 val get_flds : dex -> link -> (link * field_id_item) list
@@ -572,6 +608,9 @@ val own_the_mtd : dex -> link -> link -> bool
 (** get {!class_data_item} for given class,
  raise {!Wrong_match} unless [CLASS_DATA] *)
 val get_cdata : dex -> link -> link * class_data_item
+
+(** get static fields for given class, along with initial values if exists *)
+val get_stt_flds : dex -> link -> (link * encoded_value option) list
 
 (** get {!encoded_method} for given class and method,
  raise {!Wrong_dex} if such method is not defined *)

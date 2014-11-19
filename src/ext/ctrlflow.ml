@@ -1,5 +1,5 @@
 (*
- * Copyright (c) 2010-2013,
+ * Copyright (c) 2010-2014,
  *  Jinseong Jeon <jsjeon@cs.umd.edu>
  *  Kris Micinski <micinski@cs.umd.edu>
  *  Jeff Foster   <jfoster@cs.umd.edu>
@@ -50,13 +50,7 @@ module A = Array
 (* Basic Types/Elements                                                *)
 (***********************************************************************)
 
-module OffKey =
-struct
-  type t = D.link
-  let compare l1 l2 = Pervasives.compare (D.of_off l1) (D.of_off l2)
-end
-
-module OS = Set.Make(OffKey)
+module OS = Set.Make(D.OffKey)
 
 type cfg = bb array
 

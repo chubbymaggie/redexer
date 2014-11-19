@@ -1,5 +1,5 @@
 (*
- * Copyright (c) 2010-2013,
+ * Copyright (c) 2010-2014,
  *  Jinseong Jeon <jsjeon@cs.umd.edu>
  *  Kris Micinski <micinski@cs.umd.edu>
  *  Jeff Foster   <jfoster@cs.umd.edu>
@@ -95,8 +95,20 @@ sig
   (** [onOptionsItemSelected] *)
   val onOptionsItemSelected : string
 
+  (** [setContentView] *)
+  val set_view : string
+
+  (** [findViewById] *)
+  val find_view : string
+
   (** [managedQuery] *)
   val query : string
+
+  (** [Activity] lifecycle methods *)
+  val lifecycle_act : string list
+
+  (** [Service] lifecycle methods *)
+  val lifecycle_srv : string list
 
 end
 
@@ -135,6 +147,15 @@ sig
 
   (** [query] *)
   val query : string
+
+  (** [setClass] *)
+  val set_class : string
+
+  (** [startActivity] *)
+  val start_act : string
+
+  (** [startService] *)
+  val start_srv : string
 
   (** [content://com.android.contacts] *)
   val uri : string
@@ -278,11 +299,34 @@ sig
 
 end
 
+(** {2 Utilities} *)
+
 (** [true] if given class is [Android] library *)
 val is_library : string -> bool
 
+(** [true] if given class is [Android] static library *)
+val is_static_library : string -> bool
+
 (** [true] if given method is abstract *)
 val is_abstract : string -> bool
+
+(** [true] if given class is subclass of [Context] *)
+val is_context : Dex.dex -> Dex.link -> bool
+
+(** [true] if given class is subclass of [Activity] *)
+val is_activity : Dex.dex -> Dex.link -> bool
+
+(** [true] if given class is subclass of [Fragment] *)
+val is_fragment : Dex.dex -> Dex.link -> bool
+
+(** [true] if given class implements any sorts of [Listener] *)
+val is_listener : Dex.dex -> Dex.link -> bool
+
+(** find [Activity] lifecycle methods *)
+val find_lifecycle_act : Dex.dex -> Dex.link -> Dex.link list
+
+(** [true] if given method is a setter for [Listener] *)
+val is_set_listener : Dex.dex -> Dex.link -> bool
 
 (** {2 Permissions} *)
 
@@ -315,7 +359,20 @@ sig
 
 end
 
-(** {2 Utilities} *)
+(** {2 Ads} *)
+
+module Ads :
+sig
+
+  (** [true] if given class is inside [Ads] package *)
+  val is_ads_pkg : string -> bool
+
+end
+
+(** {2 Analyses} *)
+
+(** SDK name of interest *)
+val sdk : string ref
 
 (** report API usage (including overrides) in the dex file *)
 val api_usage : Dex.dex -> unit

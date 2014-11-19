@@ -1,5 +1,5 @@
 (*
- * Copyright (c) 2010-2013,
+ * Copyright (c) 2010-2014,
  *  Jinseong Jeon <jsjeon@cs.umd.edu>
  *  Kris Micinski <micinski@cs.umd.edu>
  *  Jeff Foster   <jfoster@cs.umd.edu>
@@ -324,6 +324,18 @@ let of_off (l: link) : int =
   | Off off -> I32.to_int off
   | _ -> raise (Wrong_link "of_off")
 
+module IdxKey =
+struct
+  type t = link
+  let compare id1 id2 = Pervasives.compare (of_idx id1) (of_idx id2)
+end
+
+module OffKey =
+struct
+  type t = link
+  let compare o1 o2 = Pervasives.compare (of_off o1) (of_off o2)
+end
+
 (* opr2idx : I.operand -> link *)
 let opr2idx (opr: I.operand) : link =
   match opr with
@@ -578,6 +590,7 @@ let find_str dx (str: string) : link =
 
 (* get_ty_str : dex -> link -> string *)
 let get_ty_str dx (tid: link) : string =
+  if tid = no_idx then "" else
   get_str dx (DA.get dx.d_type_ids (of_idx tid))
 
 (* find_ty_str : dex -> string -> link *)
@@ -595,10 +608,10 @@ let ty_comp_possibly_relaxed dx tid1 tid2 r =
     try
       let c1 = J.get_class_name s1
       and c2 = J.get_class_name s2
-      in compare c1 c2
-    with _ -> compare s1 s2
+      in S.compare c1 c2
+    with _ -> S.compare s1 s2
   else
-    compare s1 s2
+    S.compare s1 s2
 
 (* ty_comp : dex -> link -> link -> int *)
 let ty_comp dx (tid1: link) (tid2: link) : int =
@@ -622,6 +635,10 @@ let get_mit dx (mid: link) : method_id_item =
 (* get_pit : dex -> method_id_item -> proto_id_item *)
 let get_pit dx (mit: method_id_item) : proto_id_item =
   DA.get dx.d_proto_ids (of_idx mit.m_proto_id)
+
+(* get_fty : dex -> field_id_item -> link *)
+let get_fty dx (fit: field_id_item) : link =
+  fit.f_type_id
 
 (* get_argv : dex -> method_id_item -> link list *)
 let get_argv dx (mit: method_id_item) : link list =
@@ -689,7 +706,29 @@ let get_fld_name dx (fid: link) : string =
 let get_mtd_name dx (mid: link) : string =
   get_str dx (get_mit dx mid).m_name_id
 
-(* get_cid: dex -> string -> link *)
+(* get_fld_full_name : dex -> link -> string *)
+let get_fld_full_name dx (fid: link) : string =
+  let cid = get_cid_from_fid dx fid in
+  let cname = get_ty_str dx cid
+  and fname = get_fld_name dx fid in
+  cname^"."^fname
+
+(* get_mtd_full_name : dex -> link -> string *)
+let get_mtd_full_name dx (mid: link) : string =
+  let cid = get_cid_from_mid dx mid in
+  let cname = get_ty_str dx cid
+  and mname = get_mtd_name dx mid in
+  cname^"->"^mname
+
+(* get_mtd_sig : dex -> link -> string *)
+let get_mtd_sig dx (mid: link) : string =
+  let mname = get_mtd_full_name dx mid
+  and mit = get_mit dx mid in
+  let argv = L.map (get_ty_str dx) (get_argv dx mit)
+  and rety = get_ty_str dx (get_rety dx mit) in
+  mname^"("^(L.fold_left (^) "" argv)^")"^rety
+
+(* get_cid : dex -> string -> link *)
 let get_cid dx (name: string) : link =
   find_ty_str dx name
 
@@ -699,6 +738,25 @@ let get_cdef dx (cid: link) : class_def_item =
     cid = cdef.c_class_id
   in
   DA.get dx.d_class_defs (DA.index_of finder dx.d_class_defs)
+
+let get_classes dx (f: link -> bool) : link list =
+  let folder acc (cdef: class_def_item) =
+    let cid = cdef.c_class_id in
+    if f cid then cid :: acc else acc
+  in
+  DA.fold_left folder [] dx.d_class_defs
+
+(* get_interfaces : dex -> link -> link list *)
+let get_interfaces dx (cid: link) : link list =
+  try get_ty_lst dx (get_cdef dx cid).interfaces
+  with Not_found -> []
+
+(* get_implementers : dex -> link -> link list *)
+let get_implementers dx (cid: link) : link list =
+  let f cid' =
+    L.mem cid (get_interfaces dx cid')
+  in
+  get_classes dx f
 
 (* get_superclass : dex -> link -> link *)
 let get_superclass dx cid : link =
@@ -712,11 +770,6 @@ let get_superclasses dx (cid: link) : link list =
     else h (x::acc) (get_superclass dx x)
   in h [] cid
 
-(* get_interfaces: dex -> link -> link list *)
-let get_interfaces dx (cid: link) : link list =
-  try get_ty_lst dx (get_cdef dx cid).interfaces
-  with Not_found -> []
-  
 (* in_hierarchy : dex -> (link -> bool) -> link -> bool *)
 let rec in_hierarchy dx (f: link -> bool) (cid: link) : bool =
   if cid = no_idx then false else
@@ -725,6 +778,26 @@ let rec in_hierarchy dx (f: link -> bool) (cid: link) : bool =
 (* is_superclass : dex -> link -> link -> bool *)
 let is_superclass dx (cid: link) (sup: link) : bool =
   in_hierarchy dx ((=) sup) cid
+
+(* is_innerclass : dex -> link -> link -> bool *)
+let is_innerclass dx (cid: link) (inner: link) : bool =
+  let cname = get_ty_str dx cid
+  and inner_name = get_ty_str dx inner in
+  0 = S.compare cname (J.get_owning_class inner_name)
+
+(* get_innerclasses : dex -> link -> link list *)
+let get_innerclasses dx (cid: link) : link list =
+  let f cid' =
+    J.is_inner_class (get_ty_str dx cid')
+    && is_innerclass dx cid cid'
+  in
+  get_classes dx f
+
+(* get_owning_class : dex -> link -> link *)
+let get_owning_class dx (cid: link) : link =
+  let cname = get_ty_str dx cid in
+  if not (J.is_inner_class cname) then no_idx else
+    get_cid dx (J.get_owning_class cname)
 
 (* get_flds : dex -> link -> (link * field_id_item) list *)
 let get_flds dx (cid: link) : (link * field_id_item) list =
@@ -797,12 +870,9 @@ let rec get_supermethod dx (cid: link) (mid: link) : link =
     mtd_comp dx mit mit' = 0
   in
   let sid = get_superclass dx cid in
-  try fst (L.find finder (get_mtds dx sid))
-  with Not_found ->
-  (
-    if sid <> no_idx then get_supermethod dx sid mid
-    else no_idx
-  )
+  if sid = no_idx then no_idx else
+    try fst (L.find finder (get_mtds dx sid))
+    with Not_found -> get_supermethod dx sid mid
 
 (* get_the_mtd_abstr : dex -> link -> (link -> method_id_item -> bool)
   -> link * method_id_item *)
@@ -849,6 +919,24 @@ let get_cdata dx (cid: link) : link * class_data_item =
   match get_data_item dx off with
   | CLASS_DATA cdat -> off, cdat
   | _ -> raise (Wrong_match "get_cdata: not CLASS_DATA")
+
+(* get_stt_flds : dex -> link -> (link * encoded_value option) list *)
+let get_stt_flds dx (cid: link) : (link * encoded_value option) list =
+  let cdef = get_cdef dx cid in
+  let _, cdat = get_cdata dx cid in
+  let evs =
+    if no_off = cdef.static_values then [] else
+    match get_data_item dx cdef.static_values with
+    | STATIC_VALUE evs -> evs
+    | _ -> raise (Wrong_match "get_stt_flds: not STATIC_VALUE")
+  in
+  let rec iter fids evs =
+    match fids, evs with
+    | fid::tl1, ev::tl2 -> (fid, Some ev) :: (iter tl1 tl2)
+    | fid::tl1, [] -> (fid, None) :: (iter tl1 [])
+    | [], [] -> []
+  in
+  iter (L.map (fun efld -> efld.field_idx) cdat.static_fields) evs
 
 (* get_emtd : dex -> link -> link -> encoded_method *)
 let get_emtd dx (cid: link) (mid: link) : encoded_method =
