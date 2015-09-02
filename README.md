@@ -1,5 +1,4 @@
-redexer
-=======
+# redexer
 
 Redexer is a reengineering tool that manipulates Android app binaries.
 This tool is able to parse a DEX file into an in-memory data structure;
@@ -8,8 +7,8 @@ to infer with which parameters the app uses certain permissions
 structure to produce an output DEX file (we name these features
 Dr. Android, which stands for Dalvik Rewriting for Android).
 
-Publications
-------------
+
+## Publications
 
 * [Dr. Android and Mr. Hide: Fine-grained Permissions in Android Applications.][spsm]
   Jinseong Jeon, Kristopher K. Micinski, Jeffrey A. Vaughan, Ari Fogel, Nikhilesh Reddy, Jeffrey S. Foster, and Todd Millstein.
@@ -17,19 +16,26 @@ Publications
 
 [spsm]: http://dx.doi.org/10.1145/2381934.2381938
 
-Requirements
-------------
+
+## Requirements
 
 * OCaml and Ruby
 
-This tool is tested under [OCaml][ml] 4.00.0 and [Ruby][rb] 1.8.6(7),
+This tool is tested under [OCaml][ml] 4.02.2 and [Ruby][rb] 1.8.6(7),
 so you need to install them (or higher versions of them).
 
-* OCaml SHA library (ocamlfind/findlib or FlexDLL)
+* OCaml package/library manager and SHA library
 
-If you're using a linux machine, you can easily find a distribution.
+To manipulate a SHA-1 signature (hash) in the DEX format,
+we utilize [OCaml SHA library][sha] via [ocamlfind/findlib][flib],
+an OCaml library manager.  The easiest way to install both is
+using [OPAM][opam], an OCaml package manager, which has
+both packages---[OPAM ocamlfind][opam-ocamlfind] and [OPAM sha][opam-sha].
 
-If not, e.g., using a Mac, you need to install it by yourself.
+You can also build and/or install both packages directly.
+If you're using a linux machine, you can easily find distributions.
+
+If not, e.g., using a Mac, you need to build it by yourself.
 You can find the original source codes at [here][sha].
 Build it by running make, and link the resulting directory into ocamlfind's
 root site-lib directory; or sudo make install.
@@ -47,7 +53,7 @@ variables are set correctly as follows:
 To unpack and repack apk files, we use [apktool][apk], an open source APK
 reengineering tool.  Since it uses aapt, Android Asset Packaging Tool,
 you need to install [Android SDK][sdk] or sources.  Besides, we use
-zipalign, which also comes from Android SDK, to optimize rewritten apps.
+`zipalign`, which also comes from Android SDK, to optimize rewritten apps.
 
 * RubyGems and Nokogiri
 
@@ -65,14 +71,17 @@ dominator tree, etc.), you need to install [graphviz dot][dot].
 [sha]: https://github.com/vincenthz/ocaml-sha/
 [fdll]: http://alain.frisch.fr/flexdll.html
 [flib]: http://projects.camlcity.org/projects/findlib.html/
+[opam]: http://opam.ocaml.org/
+[opam-ocamlfind]: http://opam.ocaml.org/packages/ocamlfind/ocamlfind.1.5.5/
+[opam-sha]: http://opam.ocaml.org/packages/sha/sha.1.9/
 [apk]: http://code.google.com/p/android-apktool/
 [sdk]: http://developer.android.com/sdk/index.html
 [gem]: http://rubygems.org/
 [xml]: http://nokogiri.org/
 [dot]: http://www.graphviz.org/
 
-Build
------
+
+## Build
 
 To build redexer, just make!  You can see redexer binary at the top level.
 
@@ -87,8 +96,8 @@ You can generate API documents in html format as well.
 
     $ make api
 
-Usage
------
+
+## Usage
 
 * help
 
@@ -201,7 +210,7 @@ This option conducts a classic forward data-flow analysis.
 
 * dependants
 
-This option finds class dependancy.
+This option finds class dependency.
 
     $ ruby scripts/cmd.rb target.(apk|dex) --cmd dependants --mtd cls.mtd
 
@@ -297,14 +306,15 @@ Assume path to ANDROID_SDK is set.
 * logging
 
 This is a variant of the rewrite feature.  Using this feature, you can log
-apps behavior from specific points of view.  First, build logging/ as follows.
+apps behavior from specific points of view.  The pre-built dex file
+for logging library is provided: `data/logging.dex`.  If you want to add
+more features or utilities, build it as follows:
 
     $ cd logging
-    $ android update project -p .
-    $ ant debug
+    $ gradle copyDex
     $ cd ..
 
-After logging/bin/classes.dex is generated correctly, use the following command.
+Then, use the following command:
 
     $ ruby scripts/cmd.rb target.apk --cmd logging
 
@@ -317,7 +327,7 @@ all information in the memory, you may use the offline mode of the script:
     $ ./scripts/trim.py -d
 
 Note that all command-line parameters will be passed to adb logcat, and
-by default, "org.umd.logging:I *:S" is passed to filter out irrelevant logs.
+by default, `org.umd.logging:I *:S` is passed to filter out irrelevant logs.
 
 If logs overflow, you should use the online mode:
 
@@ -329,6 +339,31 @@ In either mode, logs are saved in log.txt and shown to the screen at once.
 Thus, after collecting logs, you may need to move that file, e.g.:
 
     $ mv log.txt app.scenario.txt
+
+* logging user interactions
+
+The logging feature above is general in that you can specify what to log
+at a method level.  (See `logging` module for more details.)
+However, this is sometimes too verbose and may induce performance degradation.
+This feature is designed to log only user interactions.  Using this feature,
+you can capture UI-related events only.  Similarly, the pre-built dex file
+for logging library is provided: `data/logging-ui.dex`.  If you want to modify
+the verbosity of UI information, build it as follows:
+
+    $ cd logging-ui
+    $ gradle copyDex
+    $ cd ..
+
+Then, use the following command:
+
+    $ ruby scripts/cmd.rb target.apk --cmd logging_ui
+
+The logging library is inherited from android a11y service, which requires
+user's explicit consent.  Thus, after installing the rewritten apk, go to
+`Settings/Accessibility` and turn on `UI Logging` service.
+(This step can be viewed similar to turning on device debugging mode.)
+In the logcat, messages with tags `org.umd.logging_ui.*` are interactions
+between the user and the app under test.
 
 * directed exploration
 
@@ -343,5 +378,5 @@ vulnerabilities in 3rd party libraries.  More details are described at
 the following paper:
 
     * Brahmastra: Driving Apps to Test the Security of Third-Party Components.
-    R. Bhoraskar, et. al. In 23rd Usenix Security Symposium (Security '14).
+    R. Bhoraskar, et al., In 23rd Usenix Security Symposium (Security '14).
 
