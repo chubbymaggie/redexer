@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.org/plum-umd/redexer.svg?branch=master)](https://travis-ci.org/plum-umd/redexer)
+
 # redexer
 
 Redexer is a reengineering tool that manipulates Android app binaries.
@@ -38,7 +40,7 @@ If you're using a linux machine, you can easily find distributions.
 If not, e.g., using a Mac, you need to build it by yourself.
 You can find the original source codes at [here][sha].
 Build it by running make, and link the resulting directory into ocamlfind's
-root site-lib directory; or sudo make install.
+root site-lib directory; or `sudo make install`.
 
 If you're using a PC, you need to install [ocamlfind/findlib][flib]
 and [FlexDLL][fdll] first.  Please make sure that your environment
@@ -48,12 +50,30 @@ variables are set correctly as follows:
     CAML_LD_LIBRARY_PATH=%OCAMLLIB%\stublibs
     FLEXLINKFLAGS=-L%MinGW%\lib -L%MinGW%\lib\gcc\mingw32\N.N.N
 
+* OPAM packages:
+   - sha
+   - str
+   - ppx_deriving
+   - ppx_deriving_yojson
+   - yojson
+
 * Android SDK (or sources)
 
 To unpack and repack apk files, we use [apktool][apk], an open source APK
-reengineering tool.  Since it uses aapt, Android Asset Packaging Tool,
+reengineering tool.  Since it uses `aapt`, Android Asset Packaging Tool,
 you need to install [Android SDK][sdk] or sources.  Besides, we use
 `zipalign`, which also comes from Android SDK, to optimize rewritten apps.
+
+You can set paths to Android base tools by adding the followings
+to your profile:
+
+    ANDROID_HOME=$HOME/android-sdk    # your own path here!
+    export ANDROID_HOME
+
+    PATH=$PATH:$ANDROID_HOME/tools
+    PATH=$PATH:$ANDROID_HOME/platform-tools
+    PATH=$PATH:$ANDROID_HOME/build-tools/19.0.0    # installed version number
+    export PATH
 
 * RubyGems and Nokogiri
 

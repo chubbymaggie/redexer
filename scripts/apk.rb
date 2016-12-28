@@ -74,6 +74,7 @@ class Apk
     @res = Resources.new(@dir)
     @out = ""
     @succ = true
+    @detail = :none
   end
 
   def dex
@@ -89,7 +90,7 @@ class Apk
 
   def unpack
     if @manifest == nil
-      runcmd("java -Djava.awt.headless=true -jar #{cygpath(APKT)} d -f --no-src --keep-broken-res -o #{cygpath(@dir)} #{cygpath(@apk)}")
+      runcmd("java -jar #{APKT} d -f --no-src --keep-broken-res -o #{cygpath(@dir)} #{cygpath(@apk)}")
       if @succ
         @manifest = Manifest.new(xml)
         org_in_manifest()
@@ -97,13 +98,17 @@ class Apk
     end
     @succ
   end
-  
-  def logging()
-    Dex.logging(dex, dex)
+
+  def unpacked 
+    @manifest == nil
+  end
+
+  def logging(detail)
+    Dex.logging(dex,detail,dex)
     @out << Dex.out
     @succ = Dex.succ
   end
-
+  
   DAT = File.join(HOME, "data")
   LIBDEX = File.join(DAT, "logging-ui.dex")
 
@@ -156,6 +161,34 @@ class Apk
     # if rewriting is successful, results folder will have dex and xml files
     system("rm -rf #{@dir}")
   end
+
+  def manifest_path
+    File.join(@dir, "AndroidManifest.xml")
+  end
+
+  PERMISSION = "\t<uses-permission android:name=\"android.permission.WRITE_EXTERNAL_STORAGE\"/>"
+  MANIFEST_START = "<manifest.*>"
+  def add_permission()
+    file_path = manifest_path
+    if not (File.readlines(file_path).grep(/#{PERMISSION}/).size > 0)
+      temp_file = Tempfile.new(@dir)
+      begin
+        File.readlines(file_path).each do |line|
+          temp_file.puts(line)
+          temp_file.puts(PERMISSION) if line =~ /#{MANIFEST_START}/
+        end
+        temp_file.close
+        FileUtils.mv(temp_file.path,file_path)
+      ensure
+        temp_file.delete
+      end
+    end
+  end
+
+  def remove_permissions(permissions)
+    permissions.each { |x| @manifest.remove_permission(x) }
+    @manifest.save_to(manifest_path())
+  end
   
   def launcher
     @manifest.launcher
@@ -198,6 +231,7 @@ class Apk
 private
 
   def runcmd(cmd)
+    puts cmd
     @out = "" if not @out
     @out << cmd + "\n"
     @out << `#{cmd} 2>&1`

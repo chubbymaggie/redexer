@@ -38,8 +38,14 @@
 
 (** This module provides special functions for logging apps *)
 
+(** Set the granularity for logging *)
+type detail =
+  | Default              (** Default granularity *)
+  | Fine                 (** Fine grained granularity *)
+  | Regex of Yojson.Safe.json (** Log all methods matching a configured set of regular expressions *)
+
 (** conclude more logging *)
-val detail : bool ref
+val detail : detail ref
 
 (** add non-overriden transition methods *)
 val add_transition : Dex.dex -> unit

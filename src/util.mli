@@ -84,9 +84,20 @@ val begins_with : string -> string -> bool
 (** [true] if the given [string] ends with the given suffix *)
 val ends_with : string -> string -> bool
 
-(** [true] if the given [string] contains the other [string] *)
+(** [true] if the given [string] matches the regular expression [string] *)
 val contains : string -> string -> bool
+
+(** parse a [string] into a [Str.regexp] *)
+val parse_regexp : string -> Str.regexp
+
+(** [true] if the given [string] begins with the given prefix described by the [Str.regexp] *)
+val matches : string -> Str.regexp -> bool
 
 (** find the common prefix of the given [string]s *)
 val common_prefix : string -> string -> string
 
+(** Take a java class name and turn it into a name that can be placed into a file *)
+val sanatize_class_filename : string -> string
+
+(** select a field in a JSON object hierarchy using a string e.g., "foo/bar/baz" *)
+val json_select : Yojson.Safe.json -> string -> Yojson.Safe.json

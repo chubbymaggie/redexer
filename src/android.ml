@@ -64,6 +64,9 @@ struct
   let service = pkg^"Service"
   let application = pkg^"Application"
 
+  let fragment = pkg^"Fragment"
+  let v4fragment = adr^"support.v4.app.Fragment"
+
   let lst_act = pkg^"ListActivity"
   let tab_act = pkg^"TabActivity"
 
@@ -80,6 +83,8 @@ struct
 
   let onCreateOptionsMenu   = "onCreateOptionsMenu"
   let onOptionsItemSelected = "onOptionsItemSelected"
+
+  let onBackPressed = "onBackPressed"
 
   let set_view = "setContentView"
   let find_view = "findViewById"
@@ -161,6 +166,11 @@ struct
   let pkg = adr^"os."
   let bundle = pkg^"Bundle"
   let iitf = pkg^"IInterface"
+  let asynctask = pkg^"AsyncTask"
+                        
+  let onPreExecute = "onPreExecute"
+
+  let task_methods = [onPreExecute]
 
   let clazz () = L.map J.to_java_ty [bundle]
 end

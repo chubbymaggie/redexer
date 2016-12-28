@@ -56,6 +56,12 @@ sig
   (** [android.app.Application] *)
   val application : string
 
+  (** [android.app.Fragment] *)
+  val fragment : string
+
+  (** [android.support.v4.app.Fragment] *)
+  val v4fragment : string
+
   (** [android.app.ListActivity] *)
   val lst_act : string
 
@@ -94,6 +100,9 @@ sig
 
   (** [onOptionsItemSelected] *)
   val onOptionsItemSelected : string
+
+  (** [onBackPressed] *)
+  val onBackPressed : string
 
   (** [setContentView] *)
   val set_view : string
@@ -218,9 +227,17 @@ sig
   (** [android.os.Bundle] *)
   val bundle : string
 
+  (** [android.os.AsyncTask] *)
+  val asynctask : string
+
   (** [android.os.IInterface] *)
   val iitf : string
 
+  (** [onPreExecute] *)
+  val onPreExecute : string
+                       
+  (** [AsyncTask] methods to be logged *)
+  val task_methods : string list
 end
 
 module Preference :

@@ -40,6 +40,7 @@ module S = String
 module L = List
 
 module RE = Str
+module Js = Yojson.Safe
 
 module IntKey =
 struct
@@ -48,8 +49,8 @@ struct
 end
 
 module IS = Set.Make(IntKey)
-
 module IM = Map.Make(IntKey)
+module CM = Map.Make(Char)
 
 (* read_lines : in_channel -> string list *)
 let read_lines ch : string list =
@@ -154,6 +155,15 @@ let begins_with (str: string) (prefix: string) : bool =
 let ends_with (str: string) (suffix: string) : bool =
   begins_with (str_rev str) (str_rev suffix)
 
+(* parse_regexp string -> Re.regexp *)
+let parse_regexp (str: string) : RE.regexp =
+  RE.regexp str
+
+(* matches : string -> RE.regexp -> bool *)
+let matches (str: string) (re: RE.regexp) : bool =
+  try ignore (RE.search_forward re str 0); true
+  with Not_found -> false
+
 (* contains : string -> string -> bool *)
 let contains (str: string) (sub: string) : bool =
   let re = RE.regexp_string sub in
@@ -168,4 +178,34 @@ let common_prefix (s1: string) (s2: string) : string =
     | _, _ -> pre
   in
   implode (h [] (explode s1) (explode s2))
+
+  
+let filename_sanatize_map = CM.add ';' "_" (CM.add '/' "_" CM.empty)
+  
+(* sanatize_class_filename : string -> string *)
+let sanatize_class_filename clsname = 
+  let replace str (map : string CM.t) =
+    let rec combine k lst =
+      match k with
+      | hd :: tl ->
+         (try combine tl (lst @ (explode (CM.find hd map)))
+          with | Not_found -> combine tl (lst @ [ hd ]))
+      | [] -> implode lst
+    in combine (explode str) []
+  in
+  replace clsname filename_sanatize_map
+
+(***********************************************************************)
+(* a few JSON utilities                                                *)
+(***********************************************************************)
+
+let json_select (j : Js.json) selector = 
+  let pieces = RE.split (RE.regexp "/") selector in
+  let rec iter json = function
+    | [] -> json
+    | hd::tl -> (match json with
+        | `Assoc al -> iter (L.assoc hd al) tl
+        | _ -> failwith ("expected JSON object with field " ^ hd ^  " but found something else."))
+  in
+  iter j pieces
 

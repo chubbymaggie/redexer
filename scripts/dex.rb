@@ -36,12 +36,15 @@ class Dex
   HERE = File.dirname(THIS_FILE)
   HOME = File.join(HERE, "..")
   DAT  = File.join(HOME, "data")
-  REDEXER = File.join(HOME, "redexer")
+  REDEXER = File.join(HOME, "redexer ")
+
 
   QUIET = "2>/dev/null"
-  TOO = "2>&1"
+  #TOO = "2>&1"
+  TOO = ""
 
   DEX = File.join(HOME, "classes.dex")
+  @@level = :default
 
   def self.unparse(dex_name=DEX, *file_name)
     yml = `#{REDEXER} -unparse #{dex_name} #{QUIET}`
@@ -77,9 +80,19 @@ class Dex
     self.runcmd("#{REDEXER} #{opt} -lib #{lib} -combine #{dex_name}")
   end
   
-  def self.logging(dex_name=DEX, *out_name)
+  LOGREGEXES = File.join(DAT, "logging-regexes.txt")
+
+  def self.logging(dex_name=DEX, detail=:none, *out_name)
     opt = self.out_opt(out_name)
-    self.runcmd("#{REDEXER} #{opt} #{dex_name} -logging #{TOO}")
+    str = ""
+    case detail
+    when :regex
+      str = "-logging-regex #{LOGREGEXES}"
+    when :fine
+      str = "-logging-detail"
+    end
+    puts "#{REDEXER} #{opt} #{dex_name} -logging #{str} #{TOO}"
+    self.runcmd("#{REDEXER} #{opt} #{dex_name} -logging #{str} #{TOO}")
   end
 
   def self.directed(dex_name, acts, pkg, *out_name)
@@ -91,18 +104,30 @@ class Dex
   
   CSS = File.join(DAT, "dex-format.css")
 
-  def self.htmlunparse(dex_name=DEX, dir_name="output")
+  def self.dodir(dir_name) 
     if not File.exists?(dir_name)
       puts "Creating new output directory: #{dir_name}"
       system("mkdir #{dir_name}")
-      puts "Moving default stylesheet to #{dir_name}"
-      system("cp #{CSS} #{File.join(dir_name, "dex-format.css")}")
     end
     if !(test ?d, dir_name)
       puts "Error!  ``#{dir_name}'' exists and is not a directory"
     else
-      self.runcmd("#{REDEXER} -htmlunparse #{dex_name} -outputdir #{dir_name}")
+      yield 
       @@succ = $?.exitstatus == 0
+    end
+  end
+
+  def self.htmlunparse(dex_name=DEX, dir_name="output")
+    self.dodir(dir_name) do
+      puts "Moving default stylesheet to #{dir_name}"
+      system("cp #{CSS} #{File.join(dir_name, "dex-format.css")}")
+      self.runcmd("#{REDEXER} -htmlunparse #{dex_name} -outputdir #{dir_name}")
+    end
+  end
+
+  def self.jsonunparse(dex_name=DEX, dir_name="output")
+    self.dodir(dir_name) do
+      self.runcmd("#{REDEXER} -jsonunparse #{dex_name} -outputdir #{dir_name}")
     end
   end
   
